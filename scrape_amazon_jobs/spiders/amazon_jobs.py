@@ -4,12 +4,7 @@ from scrapy.spiders import CrawlSpider, Rule
 from scrapy import Request
 from scrapy_splash import SplashRequest
 from ..items import ScrapeAmazonJobsItem, ScrapeAmazonJobsList
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from urllib.parse import urljoin
-from time import sleep
 
 
 class AmazonJobsSpider(CrawlSpider):
@@ -27,25 +22,19 @@ class AmazonJobsSpider(CrawlSpider):
         cat_links = response.xpath('//div[@class="tiles"]/div/a/@href').extract()
         for link in cat_links:
             yield Request(urljoin(response.url, link), callback=self.get_full_list, )
-        # yield Request(urljoin(response.url, cat_links[0]), callback=self.get_full_list)
 
     def get_full_list(self, response):
-        count = response.xpath('//div[@id="job-category"]/div/div/div/div[2]/text()').extract_first()
+        count = int(response.xpath('//div[@id="job-category"]/div/div/div/div[2]/text()').extract_first())
         url = response.url.split('?')[0]
-        params = '?job_count={0}'.format(int(count)+2)
-        yield Request('{}{}'.format(url, params), callback=self.parse_jobs)
+        params = '?job_count={0}'.format(count+2)
+        wait = 50 if (count/10 > 60) else count/10
+        yield SplashRequest('{}{}'.format(url, params), self.parse_jobs, args={'wait': wait, 'timeout': 60})
 
     def parse_jobs(self, response):
-        item = ScrapeAmazonJobsItem()
-        driver = webdriver.Firefox()
-        driver.get(response.url)
-        WebDriverWait(driver, 300).until(
-            EC.presence_of_element_located((By.XPATH, '//div[@id="search-results"]/div/div[2]')))
-        job_links = driver.find_elements_by_xpath('//a[contains(@href, "/en/jobs/")]')
-        print(len(job_links))
+        job_links = response.xpath('//a[contains(@href, "/en/jobs/")]/@href').extract()
         for job_link in job_links:
-            job_link = job_link.get_attribute('href')
-            yield Request(job_link, callback=self.parse_job_text)
+            job_link = job_link
+            yield Request(urljoin(response.url, job_link), callback=self.parse_job_text)
 
     def parse_job_text(self, response):
         item = ScrapeAmazonJobsItem()
